@@ -179,6 +179,49 @@ static int touchled_cmd_reversed;
 static int touchkey_debug_count;
 static char touchkey_debug[104];
 
+int touchkey_led_ldo_on(bool on)
+{
+	struct regulator *regulator;
+
+	if (on) {
+		regulator = regulator_get(NULL, "touch_led");
+		if (IS_ERR(regulator))
+			return 0;
+		regulator_enable(regulator);
+		regulator_put(regulator);
+	} else {
+		regulator = regulator_get(NULL, "touch_led");
+		if (IS_ERR(regulator))
+			return 0;
+		if (regulator_is_enabled(regulator))
+			regulator_force_disable(regulator);
+		regulator_put(regulator);
+	}
+	return 0;
+}
+
+int touchkey_ldo_on(bool on)
+{
+	struct regulator *regulator;
+
+	if (on) {
+		regulator = regulator_get(NULL, "touch");
+		if (IS_ERR(regulator))
+			return 0;
+		regulator_enable(regulator);
+		regulator_put(regulator);
+	} else {
+		regulator = regulator_get(NULL, "touch");
+		if (IS_ERR(regulator))
+			return 0;
+		if (regulator_is_enabled(regulator))
+			regulator_force_disable(regulator);
+		regulator_put(regulator);
+	}
+
+	return 1;
+}
+
 #ifdef LED_LDO_WITH_REGULATOR
 static void change_touch_key_led_voltage(int vol_mv)
 {
@@ -779,7 +822,7 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 	/* we have timed out or the lights should be on */
     if (led_timer.expires > jiffies || led_timeout != BL_ALWAYS_OFF) {
     status = 1;
-    i2c_touchkey_write((u8 *)&status, 1); /* turn on */
+    i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1); /* turn on */
     }
 
     /* restart the timer */
@@ -919,7 +962,7 @@ static void bl_off(struct work_struct *bl_off_work)
 
 	/* we have timed out, turn the lights off */
 	status = 2;
-	i2c_touchkey_write((u8 *)&status, 1);
+	i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
 
 	return;
 }
@@ -949,7 +992,7 @@ static void notification_off(struct work_struct *notification_off_work)
 #else
 	status = 0; /* light off */
 #endif
-	i2c_touchkey_write((u8 *)&status, 1);
+	i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
 	touchkey_enable = 0;
 #ifdef CONFIG_TARGET_CM_KERNEL
 	led_on = 0;
@@ -1012,7 +1055,7 @@ static ssize_t led_status_write( struct device *dev, struct device_attribute *at
 
 				/* enable the backlight */
 				status = 1;
-				i2c_touchkey_write((u8 *)&status, 1);
+				i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
 				led_on = 1;
 
 				/* See if a timeout value has been set for the notification */
@@ -1038,7 +1081,7 @@ static ssize_t led_status_write( struct device *dev, struct device_attribute *at
 #else
 				status = 0; /* light off */
 #endif
-				i2c_touchkey_write((u8 *)&status, 1);
+				i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
 				led_on = 0;
 
 				if (!screen_on) {
@@ -1100,13 +1143,13 @@ static DEVICE_ATTR(notification_enabled, S_IRUGO | S_IWUGO, notification_enabled
 static void enable_touchkey_backlights(void)
 {
         int status = 1;
-        i2c_touchkey_write((u8 *)&status, 1);
+        i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
 }
 
 static void disable_touchkey_backlights(void)
 {
         int status = 2;
-        i2c_touchkey_write((u8 *)&status, 1);
+        i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
 }
 
 static ssize_t blink_control_read( struct device *dev, struct device_attribute *attr, char *buf )
@@ -1275,7 +1318,7 @@ static int sec_touchkey_late_resume(struct early_suspend *h)
 	if (led_timeout != BL_ALWAYS_OFF) {
         /* ensure the light is ON */
         status = 1;
-        i2c_touchkey_write((u8 *)&status, 1);
+        i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
     }
 
     /* restart the timer if needed */
@@ -1561,8 +1604,6 @@ static ssize_t touch_led_timeout_store(struct device *dev,
 
     return size;
 }
-static DEVICE_ATTR(led_timeout, S_IRUGO | S_IWUSR | S_IWGRP,
-        touch_led_timeout_show, touch_led_timeout_store);
 
 void touch_led_timedout(unsigned long ptr)
 {
@@ -2183,7 +2224,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
     /* turn off the LED if it is not supposed to be always on */
     if (led_timeout != BL_ALWAYS_ON) {
         status = 2;
-        i2c_touchkey_write((u8 *)&status, 1);
+        i2c_touchkey_write(tkey_i2c_local, (u8 *)&status, 1);
     }
 
 	return 0;
